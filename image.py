@@ -1,10 +1,9 @@
 from typing import Tuple
 
-import torch
 from PIL import Image
-from torchvision import transforms as T
 
 import config
+
 
 def get_img_flip(img: Image.Image) -> int:
     ORIENTATION_TAG = 274
@@ -66,14 +65,3 @@ def load_img(base_dir_path: str) -> Image.Image:
     img = flip_img(img)
 
     return img
-
-
-def transform_img_to_tensor(img: Image.Image) -> torch.Tensor:
-    # Normalize using standard Image Net values
-    transform = T.Compose(
-        [T.ToTensor(), T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]
-    )
-
-    t_img = transform(img).unsqueeze(0)
-
-    return t_img
