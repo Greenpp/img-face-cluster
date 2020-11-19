@@ -2,8 +2,6 @@ from typing import Tuple
 
 from PIL import Image
 
-import config
-
 
 def get_img_flip(img: Image.Image) -> int:
     ORIENTATION_TAG = 274
@@ -27,11 +25,15 @@ def get_img_flip(img: Image.Image) -> int:
     return flip
 
 
-def get_new_img_size(img: Image.Image) -> Tuple[int, int]:
+def get_new_img_size(
+    img: Image.Image,
+    max_width: int,
+    max_height: int,
+) -> Tuple[int, int]:
     # Resize factor to keep ratio
     resize_factor = max(
-        config.MAX_IMG_WIDTH / img.width,
-        config.MAX_IMG_HEIGHT / img.height,
+        max_width / img.width,
+        max_height / img.height,
     )
 
     new_width = int(img.width * resize_factor)
@@ -40,9 +42,13 @@ def get_new_img_size(img: Image.Image) -> Tuple[int, int]:
     return new_width, new_height
 
 
-def resize_img(img: Image.Image) -> Image.Image:
-    if img.width > config.MAX_IMG_WIDTH or img.height > config.MAX_IMG_HEIGHT:
-        new_size = get_new_img_size(img)
+def resize_img(
+    img: Image.Image,
+    max_width: int,
+    max_height: int,
+) -> Image.Image:
+    if img.width > max_width or img.height > max_height:
+        new_size = get_new_img_size(img, max_width, max_height)
         img = img.resize(new_size)
 
     return img
@@ -57,11 +63,13 @@ def flip_img(img: Image.Image) -> Image.Image:
     return img
 
 
-def load_img(base_dir_path: str) -> Image.Image:
-    img_path = f'{config.BASE_DIR}/{base_dir_path}'
-
-    img = Image.open(img_path)
-    img = resize_img(img)
+def load_img(
+    path: str,
+    resize_max_width: int,
+    resize_max_height: int,
+) -> Image.Image:
+    img = Image.open(path)
+    img = resize_img(img, resize_max_width, resize_max_height)
     img = flip_img(img)
 
     return img

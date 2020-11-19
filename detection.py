@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING, Iterable
-import config
 
 from PIL import Image
 
@@ -15,11 +14,9 @@ def get_faces_from_img(
     boxes, probs = mtcnn.detect(img)
 
     faces = []
-    filtered_probs = []
     for box, prob in zip(boxes, probs):
         if prob >= threshold:
             f_img = img.crop(box).resize((160, 160))
             faces.append(f_img)
-            filtered_probs.append(prob)
 
-    return faces, filtered_probs
+    return faces
