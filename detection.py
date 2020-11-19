@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 def get_faces_from_img(
     img: Image.Image,
-    mtcnn: MTCNN,
+    mtcnn: 'MTCNN',
 ) -> Iterable[Image.Image]:
     boxes, _ = mtcnn.detect(img)
 

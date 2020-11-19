@@ -21,14 +21,14 @@ def transform_img_to_tensor(img: Image.Image) -> torch.Tensor:
 
 def get_faces_embedding(
     faces: Iterable[Image.Image],
-    resnet: InceptionResnetV1,
+    resnet: 'InceptionResnetV1',
 ) -> torch.Tensor:
     t_faces = []
     for face in faces:
         t_face = transform_img_to_tensor(face)
         t_faces.append(t_face)
 
-    face_batch = torch.stack(t_faces)
+    face_batch = torch.cat(t_faces)
     embeddings = resnet(face_batch)
 
     return embeddings
