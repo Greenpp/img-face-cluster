@@ -1,6 +1,5 @@
-from matplotlib import pyplot as plt
-
 import config
+from manager import Manager
 from scanner import Scanner
 
 if __name__ == "__main__":
@@ -16,12 +15,6 @@ if __name__ == "__main__":
         verbose=True,
     )
 
-    for person, person_dict in sc.people.items():
-        print(f'Person: {person}')
-        for img in person_dict['paths']:
-            print(img)
-        if person != 'none':
-            face = person_dict['face']
-            plt.imshow(face)
-            plt.show()
-        print('')
+    mng = Manager(config.BASE_DIR)
+    mng.load_file('face-recognition-results')
+    mng.show()
