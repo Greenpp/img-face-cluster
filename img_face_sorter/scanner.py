@@ -7,9 +7,9 @@ import torch
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from PIL import Image
 
-from detection import get_faces_from_img
-from image import load_img
-from recognition import get_faces_embedding
+from .detection import get_faces_from_img
+from .image import load_img
+from .recognition import get_faces_embedding
 
 # TODO mean embedding with all found faces ?
 

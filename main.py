@@ -1,6 +1,6 @@
 import config
-from manager import Manager
-from scanner import Scanner
+from img_face_sorter.manager import Manager
+from img_face_sorter.scanner import Scanner
 
 if __name__ == "__main__":
     sc = Scanner()
