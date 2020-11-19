@@ -14,9 +14,10 @@ def get_faces_from_img(
     boxes, probs = mtcnn.detect(img)
 
     faces = []
-    for box, prob in zip(boxes, probs):
-        if prob >= threshold:
-            f_img = img.crop(box).resize((160, 160))
-            faces.append(f_img)
+    if boxes is not None:
+        for box, prob in zip(boxes, probs):
+            if prob >= threshold:
+                f_img = img.crop(box).resize((160, 160))
+                faces.append(f_img)
 
     return faces
