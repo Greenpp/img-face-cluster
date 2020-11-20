@@ -32,11 +32,12 @@ class Scanner:
             'people': [],
         }
 
-    def _save_results(
+    def _save_cache(
         self,
         dir: str,
+        idx: int,
     ) -> None:
-        save_path = f'{dir}/face-scan.pkl'
+        save_path = f'{dir}/scan-cache-{idx}.pkl'
         with open(save_path, 'wb') as f:
             pkl.dump(self.cache, f, pkl.HIGHEST_PROTOCOL)
 
@@ -65,13 +66,17 @@ class Scanner:
         img_resize_width: int = 1280,
         img_resize_height: int = 720,
         verbose: bool = True,
+        save_every: int = 100,
     ) -> None:
         self._reset_cache()
 
         base_path_len = len(search_dir)
+        file_num = 0
         for extension in extensions:
             search_pattern = f'{search_dir}/**/*.{extension}'
             for f_path in glob.iglob(search_pattern, recursive=True):
+                file_num += 1
+
                 # Leave only relative path to search directory
                 rel_path = f_path[base_path_len:]
 
@@ -95,4 +100,10 @@ class Scanner:
                     if verbose:
                         print(f'found {len(faces)} face(s)')
 
-        self._save_results(search_dir)
+                if file_num % save_every == 0:
+                    idx = file_num // save_every
+                    self._save_cache(search_dir, idx)
+                    self._reset_cache()
+
+        idx = (file_num // save_every) + 1
+        self._save_cache(search_dir, idx)
