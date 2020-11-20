@@ -11,8 +11,6 @@ from .detection import get_faces_from_img
 from .image import load_img
 from .recognition import get_faces_embedding
 
-# TODO mean embedding with all found faces ?
-
 
 class Scanner:
     def __init__(self) -> None:
@@ -29,40 +27,41 @@ class Scanner:
         self.device = device
 
     def _reset_cache(self) -> None:
-        self.people = {'none': {'paths': set()}}
+        self.cache = {
+            'empty': [],
+            'people': [],
+        }
 
     def _save_results(
         self,
         dir: str,
     ) -> None:
-        save_path = f'{dir}/face-recognition-results.pkl'
+        save_path = f'{dir}/face-scan.pkl'
         with open(save_path, 'wb') as f:
-            pkl.dump(self.people, f, pkl.HIGHEST_PROTOCOL)
+            pkl.dump(self.cache, f, pkl.HIGHEST_PROTOCOL)
 
-    def _add_new_person(
+    def _add_new_face(
         self,
         base_face: Image.Image,
         embedding: torch.Tensor,
         f_name: str,
     ) -> None:
-        new_idx = len(self.people)
-        key = f'person_{new_idx}'
-
-        self.people[key] = {
-            'face': np.array(base_face),
-            'embedding': embedding,
-            'paths': set([f_name]),
-        }
+        self.cache['people'].append(
+            {
+                'face': np.array(base_face),
+                'embedding': embedding,
+                'path': f_name,
+            }
+        )
 
     def _add_img_without_people(self, f_name: str) -> None:
-        self.people['none']['paths'].add(f_name)
+        self.cache['empty'].append(f_name)
 
     def scan(
         self,
         search_dir: str,
         extensions: Iterable[str],
         detection_threshold: float = 0.95,
-        recognition_threshold: float = 20,
         img_resize_width: int = 1280,
         img_resize_height: int = 720,
         verbose: bool = True,
@@ -89,26 +88,11 @@ class Scanner:
                         print('no faces found')
                 else:
                     embeddings = get_faces_embedding(faces, self.face_encoder)
-                    new_faces = 0
 
                     for face, embedding in zip(faces, embeddings.unbind()):
-                        found = False
-                        for person, person_dict in self.people.items():
-                            if person != 'none':
-                                base_embedding = person_dict['embedding']
-                                distance = torch.dist(
-                                    embedding, base_embedding, p=1
-                                ).item()
-                                if distance < recognition_threshold:
-                                    found = True
-                                    person_dict['paths'].add(rel_path)
-                                    break
-
-                        if not found:
-                            new_faces += 1
-                            self._add_new_person(face, embedding, rel_path)
+                        self._add_new_face(face, embedding, rel_path)
 
                     if verbose:
-                        print(f'found {len(faces)} face(s) ({new_faces} new)')
+                        print(f'found {len(faces)} face(s)')
 
         self._save_results(search_dir)
