@@ -16,11 +16,12 @@ def get_img_flip(img: Image.Image) -> int:
         8: 90,
     }
 
-    img_orientation = img.getexif()[ORIENTATION_TAG]
-    if img_orientation in EXIF_ORIENTATION_FLIP:
-        flip = EXIF_ORIENTATION_FLIP[img_orientation]
-    else:
-        flip = 0
+    meta_data = img.getexif()
+    flip = 0
+    if ORIENTATION_TAG in meta_data:
+        img_orientation = img.getexif()[ORIENTATION_TAG]
+        if img_orientation in EXIF_ORIENTATION_FLIP:
+            flip = EXIF_ORIENTATION_FLIP[img_orientation]
 
     return flip
 
