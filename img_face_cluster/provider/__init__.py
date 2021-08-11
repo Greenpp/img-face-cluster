@@ -1,0 +1,2 @@
+# Gathers images
+# Performs preprocessing
