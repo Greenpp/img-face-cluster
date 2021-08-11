@@ -3,6 +3,7 @@ name = "img-face-cluster"
 version = "0.1.0"
 description = "Clustering faces found in photos"
 authors = ["Jakub Ciszek <jakubciszek64@gmail.com>"]
+license  = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.9"
