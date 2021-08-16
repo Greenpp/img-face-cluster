@@ -141,3 +141,5 @@ cython_debug/
 
 config.py
 testdir
+
+*.csv
