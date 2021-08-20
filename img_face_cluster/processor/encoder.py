@@ -10,6 +10,8 @@ class Encoder:
         self.model = InceptionResnetV1(pretrained='vggface2', device=self.device).eval()
 
     def encode_faces(self, faces: Tensor) -> np.ndarray:
+        if faces is None:
+            return np.array([])
         batch = faces.to(self.device)
 
         embeddings = self.model(batch).detach().cpu().numpy()
