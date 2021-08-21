@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import sqlalchemy
-from sqlalchemy import insert, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import Base, Cluster, Face, Group, Photo
@@ -16,7 +16,7 @@ class Storage:
         if debug:
             db_location = 'sqlite+pysqlite:///:memory:'
         else:
-            Path('./cache').mkdir(exist_ok=True)
+            Path('./storage').mkdir(exist_ok=True)
 
         self.engine = sqlalchemy.create_engine(db_location, echo=debug, future=True)
 
@@ -60,3 +60,30 @@ class Storage:
 
             session.add_all(faces_orm)
             session.commit()
+
+    def get_photos(self, group: str) -> list[Photo]:
+        with Session(self.engine) as session:
+            group_orm = session.query(Group).filter(Group.name == group).first()
+            photos = session.query(Photo).filter(Photo.group_id == group_orm.id).all()
+
+        return photos
+
+    def get_faces(self, photo: Photo) -> list[Face]:
+        with Session(self.engine) as session:
+            faces = session.query(Face).filter(Face.photo_id == photo.id).all()
+
+        return faces
+
+    def cluster(self, group: str) -> None:
+        # TODO Split computations and database access to separate classes
+        with Session(self.engine) as session:
+            group_orm = session.query(Group).filter(Group.name == group).first()
+            group_photos = (
+                session.query(Photo).filter(Photo.group_id == group_orm.id).all()
+            )
+            group_photo_ids = [p.id for p in group_photos]
+
+            group_faces = (
+                session.query(Face).filter(Face.photo_id.in_(group_photo_ids)).all()
+            )
+            # TODO decode, cluster, save clusters to db

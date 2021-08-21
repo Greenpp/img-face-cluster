@@ -16,7 +16,7 @@ class Photo(Base):
 
     group_id = Column(Integer, ForeignKey('groups.id'))
 
-    faces = relationship('Face')
+    faces = relationship('Face', lazy='subquery')
 
     def __repr__(self) -> str:
         return f'Photo(id={self.id}, path={self.path}, hash={self.hash}, faces_num={len(self.faces)})'
@@ -28,7 +28,7 @@ class Group(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True)
 
-    photos = relationship('Photo')
+    photos = relationship('Photo', lazy='subquery')
 
     def __repr__(self) -> str:
         return f'Group(id={self.id}, name={self.name}, photos_num={len(self.photos)})'
@@ -57,7 +57,7 @@ class Cluster(Base):
 
     center = Column(Integer, ForeignKey('faces.id'))
 
-    faces = relationship('Face', foreign_keys='Face.cluster_id')
+    faces = relationship('Face', foreign_keys='Face.cluster_id', lazy='subquery')
 
     def __repr__(self) -> str:
         return f'Cluster(id={self.id}, name={self.name}, faces_num={len(self.faces)})'
