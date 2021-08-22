@@ -34,14 +34,15 @@ class Storage:
 
     def filter_new_images(self, hashes: list[str]) -> list[bool]:
         # TODO allow for image to be in multiple groups
-        querry = select(Photo.hash).where(Photo.hash.in_(hashes))
-        with Session(self.engine) as session:
-            existing_hashes = session.execute(querry).all()
-        hash_set = set(existing_hashes)
+        session = self.get_session()
+        existing_hashes = session.query(Photo.hash).filter(Photo.hash.in_(hashes)).all()
+        hash_set = set([h[0] for h in existing_hashes])
 
-        existing_filter = map(lambda x: x not in hash_set, hashes)
+        session.close()
 
-        return list(existing_filter)
+        existing_filter = list(map(lambda x: x not in hash_set, hashes))
+
+        return existing_filter
 
     def save_image(self, image: dict, faces: list[dict], group: str) -> None:
         with Session(self.engine) as session:

@@ -57,11 +57,12 @@ class Manager:
 
         # TODO add buffer for bigger encoding batches (multiple img at once)
         new_img_mask = self.storage.filter_new_images(hashes)
-        # TODO check new mask
+        new_img_count = sum(new_img_mask)
+        print(f'Found {new_img_count} new images')
         for new, img_hash, img_path in tqdm(
             zip(new_img_mask, hashes, paths),
             desc='Extracting',
-            total=sum(new_img_mask),
+            total=new_img_count,
         ):
             if not new:
                 continue
@@ -86,6 +87,8 @@ class Manager:
             self.storage.save_image(img_dict, faces_dicts, group)
 
     def cluster(self, group: str):
+        # TODO add probability threshold
+        # TODO when more than one face from single photo is in the same cluster, leave most probable one ?
         session = self.storage.get_session()
         group_orm = session.query(Group).filter(Group.name == group).first()
         group_photos = session.query(Photo).filter(Photo.group_id == group_orm.id).all()
@@ -116,8 +119,64 @@ class Manager:
 
         session.close()
 
+    def _resize_img(self, img: Image.Image, max_size: int = 128) -> Image.Image:
+        bigger_side = max(img.width, img.height)
+        resize_factor = bigger_side / max_size
+
+        new_width = int(img.width / resize_factor)
+        new_height = int(img.height / resize_factor)
+
+        return img.resize((new_width, new_height), Image.BICUBIC)
+
     def show_faces(self, cluster: str) -> None:
-        pass
+        session = self.storage.get_session()
+
+        cluster_orm = session.query(Cluster).filter(Cluster.name == cluster).first()
+        face_photo_join = (
+            session.query(Face, Photo)
+            .filter(Face.cluster_id == cluster_orm.id)
+            .join(Photo)
+            .all()
+        )
+
+        faces = []
+        for face, photo in face_photo_join:
+            img = Image.open(photo.path)
+            bbox = self._decode_array(face.bbox)
+
+            face = img.crop(bbox)
+            faces.append(self._resize_img(face))
+
+        session.close()
+
+        for face in faces:
+            face.show()
+
+    def get_clusters_num(self) -> int:
+        session = self.storage.get_session()
+        c_num = session.query(Cluster).count()
+        session.close()
+
+        return c_num
+
+    def get_clusters(self) -> None:
+        session = self.storage.get_session()
+
+        clusters = session.query(Cluster).all()
+        print('Clusters:')
+        for c in clusters:
+            print(f'{c.name:20} | {len(c.faces)}')
+
+        session.close()
+
+    def rename_cluster(self, cluster: str, new_name: str) -> None:
+        session = self.storage.get_session()
+
+        cluster_orm = session.query(Cluster).filter(Cluster.name == cluster).first()
+        cluster_orm.name = new_name
+
+        session.commit()
+        session.close()
 
     def get_photos(self, group: str) -> list[Photo]:
         return self.storage.get_photos(group)
