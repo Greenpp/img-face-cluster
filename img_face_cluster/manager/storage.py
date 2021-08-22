@@ -74,16 +74,6 @@ class Storage:
 
         return faces
 
-    def cluster(self, group: str) -> None:
+    def get_session(self) -> Session:
         # TODO Split computations and database access to separate classes
-        with Session(self.engine) as session:
-            group_orm = session.query(Group).filter(Group.name == group).first()
-            group_photos = (
-                session.query(Photo).filter(Photo.group_id == group_orm.id).all()
-            )
-            group_photo_ids = [p.id for p in group_photos]
-
-            group_faces = (
-                session.query(Face).filter(Face.photo_id.in_(group_photo_ids)).all()
-            )
-            # TODO decode, cluster, save clusters to db
+        return Session(self.engine)

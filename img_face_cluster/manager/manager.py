@@ -2,11 +2,12 @@ import hashlib
 
 import numpy as np
 from PIL import Image
+from sklearn.cluster import AffinityPropagation
 from tqdm import tqdm
 
 from ..processor import Detector, Encoder
 from ..provider import Provider
-from .models import Face, Photo
+from .models import Cluster, Face, Group, Photo
 from .storage import Storage
 
 
@@ -85,7 +86,38 @@ class Manager:
             self.storage.save_image(img_dict, faces_dicts, group)
 
     def cluster(self, group: str):
-        self.storage.cluster(group)
+        session = self.storage.get_session()
+        group_orm = session.query(Group).filter(Group.name == group).first()
+        group_photos = session.query(Photo).filter(Photo.group_id == group_orm.id).all()
+        group_photo_ids = [p.id for p in group_photos]
+
+        group_faces = (
+            session.query(Face).filter(Face.photo_id.in_(group_photo_ids)).all()
+        )
+
+        embedidngs = [self._decode_array(f.encoding) for f in group_faces]
+        cluster_alg = AffinityPropagation(random_state=42)
+
+        cluster_alg.fit(embedidngs)
+        clusters = cluster_alg.labels_
+        center_ids = cluster_alg.cluster_centers_indices_
+
+        clusters_orm = []
+        for i, idx in enumerate(center_ids):
+            center_face = group_faces[idx]
+            new_cluster = Cluster(name=str(i), center=center_face.id)
+            clusters_orm.append(new_cluster)
+        session.add_all(clusters_orm)
+        session.commit()
+
+        for face, c in zip(group_faces, clusters):
+            face.cluster_id = clusters_orm[c].id
+        session.commit()
+
+        session.close()
+
+    def show_faces(self, cluster: str) -> None:
+        pass
 
     def get_photos(self, group: str) -> list[Photo]:
         return self.storage.get_photos(group)
