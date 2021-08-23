@@ -3,6 +3,7 @@ import hashlib
 import numpy as np
 from PIL import Image
 from sklearn.cluster import AffinityPropagation
+from sqlalchemy.orm import session
 from tqdm import tqdm
 
 from ..processor import Detector, Encoder
@@ -128,7 +129,7 @@ class Manager:
 
         return img.resize((new_width, new_height), Image.BICUBIC)
 
-    def show_faces(self, cluster: str) -> None:
+    def show_cluster(self, cluster: str) -> None:
         session = self.storage.get_session()
 
         cluster_orm = session.query(Cluster).filter(Cluster.name == cluster).first()
@@ -151,6 +152,24 @@ class Manager:
 
         for face in faces:
             face.show()
+
+    def show_cluster_center(self, cluster: str) -> None:
+        session = self.storage.get_session()
+
+        # TODO fix
+        face, photo = (
+            session.query(Face, Photo)
+            .filter(Cluster.name == cluster)
+            .join(Face, Face.cluster_id == Cluster.id)
+            .join(Photo, Face.photo_id == Photo.id)
+            .first()
+        )
+        img = Image.open(photo.path)
+
+        bbox = self._decode_array(face.bbox)
+        face_img = img.crop(bbox)
+
+        self._resize_img(face_img).show()
 
     def get_clusters_num(self) -> int:
         session = self.storage.get_session()
