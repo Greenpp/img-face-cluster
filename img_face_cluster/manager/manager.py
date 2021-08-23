@@ -156,9 +156,8 @@ class Manager:
     def show_cluster_center(self, cluster: str) -> None:
         session = self.storage.get_session()
 
-        # TODO fix
-        face, photo = (
-            session.query(Face, Photo)
+        _, face, photo = (
+            session.query(Cluster, Face, Photo)
             .filter(Cluster.name == cluster)
             .join(Face, Face.cluster_id == Cluster.id)
             .join(Photo, Face.photo_id == Photo.id)
