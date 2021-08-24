@@ -1,9 +1,9 @@
 import hashlib
+from multiprocessing import Pool
 
 import numpy as np
 from PIL import Image, ImageOps
 from sklearn.cluster import AffinityPropagation
-from sqlalchemy.orm import session
 from tqdm import tqdm
 
 from ..processor import Detector, Encoder
@@ -22,6 +22,16 @@ EXIF_ORIENTATION = {
     7: -90,
     8: -90,
 }
+
+
+def calculate_hash(provider_out: tuple) -> tuple:
+    img, path = provider_out
+    h_func = hashlib.sha256()
+
+    h_func.update(img.tobytes())
+    hashed_img = h_func.hexdigest()
+
+    return hashed_img, path
 
 
 class Manager:
@@ -44,6 +54,12 @@ class Manager:
         hashed_img = h_func.hexdigest()
 
         return hashed_img
+
+    def _calculate_hash_wrapper(self, provider_out: tuple) -> tuple:
+        img, path = provider_out
+        hash = self._calculate_hash(img)
+
+        return hash, path
 
     def _encode_array(self, arr: np.ndarray) -> bytes:
         return arr.tobytes()
@@ -78,15 +94,14 @@ class Manager:
         extensions: list[str] = ['png', 'PNG', 'jpg', 'JPG', 'jpeg', 'JPEG'],
     ):
         provider = self._create_provider(path, extensions)
-
-        # TODO add multiprocessing for hashing
-        hashes = []
-        paths = []
-        for img, img_path in tqdm(provider, desc='Hashing'):
-            img_hash = self._calculate_hash(img)
-
-            hashes.append(img_hash)
-            paths.append(img_path)
+        with Pool() as p:
+            processed_img = list(
+                tqdm(
+                    p.imap_unordered(calculate_hash, provider),
+                    total=len(provider),
+                )
+            )
+        hashes, paths = zip(*processed_img)
 
         # TODO add buffer for bigger encoding batches (multiple img at once)
         new_img_mask = self.storage.filter_new_images(hashes)
