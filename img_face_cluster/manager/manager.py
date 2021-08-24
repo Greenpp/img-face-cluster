@@ -120,7 +120,7 @@ class Manager:
 
             self.storage.save_image(img_dict, faces_dicts, group)
 
-    def cluster(self, group: str, prob_threshold: float = .99):
+    def cluster(self, group: str, prob_threshold: float = 0.99):
         # TODO add probability threshold
         # TODO when more than one face from single photo is in the same cluster, leave most probable one ?
         session = self.storage.get_session()
@@ -129,7 +129,11 @@ class Manager:
         group_photo_ids = [p.id for p in group_photos]
 
         group_faces = (
-            session.query(Face).filter(Face.photo_id.in_(group_photo_ids), Face.probability > prob_threshold).all()
+            session.query(Face)
+            .filter(
+                Face.photo_id.in_(group_photo_ids), Face.probability > prob_threshold
+            )
+            .all()
         )
 
         embedidngs = [self._decode_array(f.encoding) for f in group_faces]
@@ -150,6 +154,32 @@ class Manager:
         for face, c in zip(group_faces, clusters):
             face.cluster_id = clusters_orm[c].id
         session.commit()
+
+        session.close()
+
+    def scan_and_cluster(self, path: str) -> None:
+        # TODO ability to rescan group
+        session = self.storage.get_session()
+
+        groups_num = session.query(Group).count()
+        new_name = f'g_{groups_num + 1}'
+
+        self.scan(path, new_name)
+        self.cluster(new_name)
+
+        session.close()
+
+    def interactive_cluster_naming(self) -> None:
+        # TODO add flag to cluster if has been named before
+        session = self.storage.get_session()
+
+        clusters = session.query(Cluster).all()
+        for c in clusters:
+            self.show_cluster_center(c.name)
+
+            new_name = input('Cluster name:')
+            if new_name:
+                self.rename_cluster(c.name, new_name)
 
         session.close()
 
@@ -219,6 +249,16 @@ class Manager:
         print('Clusters:')
         for c in clusters:
             print(f'{c.name:20} | {len(c.faces)}')
+
+        session.close()
+
+    def get_groups(self) -> None:
+        session = self.storage.get_session()
+
+        groups = session.query(Group).all()
+        print('Groups:')
+        for g in groups:
+            print(f'{g.name:20} | {len(g.photos)}')
 
         session.close()
 
