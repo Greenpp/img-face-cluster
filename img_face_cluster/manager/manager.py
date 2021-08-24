@@ -1,7 +1,7 @@
 import hashlib
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 from sklearn.cluster import AffinityPropagation
 from sqlalchemy.orm import session
 from tqdm import tqdm
@@ -10,6 +10,18 @@ from ..processor import Detector, Encoder
 from ..provider import Provider
 from .models import Cluster, Face, Group, Photo
 from .storage import Storage
+
+ORIENTATION_TAG = 274
+EXIF_ORIENTATION = {
+    1: 0,
+    2: 0,
+    3: 180,
+    4: 180,
+    5: 90,
+    6: 90,
+    7: -90,
+    8: -90,
+}
 
 
 class Manager:
@@ -38,6 +50,26 @@ class Manager:
 
     def _decode_array(self, b: bytes) -> np.ndarray:
         return np.frombuffer(b, dtype=np.float32)
+
+    def _rotate_image(self, img: Image.Image) -> Image.Image:
+        mirrored = False
+        rotation = 0
+
+        try:
+            metadata = img.getexif()
+            orientation_code = metadata[ORIENTATION_TAG]
+
+            rotation = EXIF_ORIENTATION[orientation_code]
+            mirrored = not bool(orientation_code % 2)
+        except KeyError:
+            pass
+
+        if rotation != 0:
+            img = img.rotate(-rotation, expand=True)
+        if mirrored:
+            img = ImageOps.mirror(img)
+
+        return img
 
     def scan(
         self,
@@ -68,6 +100,7 @@ class Manager:
             if not new:
                 continue
             img = Image.open(img_path)
+            img = self._rotate_image(img)
             faces, probs, boxes = self.detector.extract_faces(img)
             embeddings = self.encoder.encode_faces(faces)
 
@@ -87,7 +120,7 @@ class Manager:
 
             self.storage.save_image(img_dict, faces_dicts, group)
 
-    def cluster(self, group: str):
+    def cluster(self, group: str, prob_threshold: float = .99):
         # TODO add probability threshold
         # TODO when more than one face from single photo is in the same cluster, leave most probable one ?
         session = self.storage.get_session()
@@ -96,7 +129,7 @@ class Manager:
         group_photo_ids = [p.id for p in group_photos]
 
         group_faces = (
-            session.query(Face).filter(Face.photo_id.in_(group_photo_ids)).all()
+            session.query(Face).filter(Face.photo_id.in_(group_photo_ids), Face.probability > prob_threshold).all()
         )
 
         embedidngs = [self._decode_array(f.encoding) for f in group_faces]
@@ -143,6 +176,7 @@ class Manager:
         faces = []
         for face, photo in face_photo_join:
             img = Image.open(photo.path)
+            img = self._rotate_image(img)
             bbox = self._decode_array(face.bbox)
 
             face = img.crop(bbox)
@@ -164,6 +198,7 @@ class Manager:
             .first()
         )
         img = Image.open(photo.path)
+        img = self._rotate_image(img)
 
         bbox = self._decode_array(face.bbox)
         face_img = img.crop(bbox)
