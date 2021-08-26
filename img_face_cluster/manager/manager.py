@@ -2,6 +2,7 @@ import hashlib
 from multiprocessing import Pool
 
 import numpy as np
+import torch
 from PIL import Image, ImageOps
 from sklearn.cluster import AffinityPropagation
 from tqdm import tqdm
@@ -41,6 +42,7 @@ class Manager:
 
         self.detector = Detector(gpu=gpu)
         self.encoder = Encoder(gpu=gpu)
+        print('Manager ready')
 
     def _create_provider(self, path: str, ext: list[str]) -> Provider:
         provider = Provider(path, ext)
@@ -67,7 +69,7 @@ class Manager:
     def _decode_array(self, b: bytes) -> np.ndarray:
         return np.frombuffer(b, dtype=np.float32)
 
-    def _rotate_image(self, img: Image.Image) -> Image.Image:
+    def _preprocess_image(self, img: Image.Image) -> Image.Image:
         mirrored = False
         rotation = 0
 
@@ -85,13 +87,30 @@ class Manager:
         if mirrored:
             img = ImageOps.mirror(img)
 
+        img = self._resize_img(img, 720)
+
         return img
+
+    def load_images(self, paths: list[str]) -> list[Image.Image]:
+        return [Image.open(p) for p in paths]
+
+    def filter_list(self, l: list, mask: list[bool]) -> list:
+        if len(l) != len(mask):
+            raise IndexError('Elements number does not match')
+
+        return [l[i] if mask[i] else None for i in range(len(l))]
+
+    def sort_data_for_processing(
+        self, data: list[tuple[str, str, Image.Image]]
+    ) -> list[tuple[str, str, Image.Image]]:
+        return sorted(data, key=lambda x: (x[2].size[0], x[2].size[1]))
 
     def scan(
         self,
         path: str,
         group: str,
         extensions: list[str] = ['png', 'PNG', 'jpg', 'JPG', 'jpeg', 'JPEG'],
+        max_batch_size: int = 8,
     ):
         provider = self._create_provider(path, extensions)
         with Pool() as p:
@@ -103,40 +122,109 @@ class Manager:
             )
         hashes, paths = zip(*processed_img)
 
-        # TODO add buffer for bigger encoding batches (multiple img at once)
         new_img_mask = self.storage.filter_new_images(hashes)
         new_img_count = sum(new_img_mask)
         print(f'Found {new_img_count} new images')
-        for new, img_hash, img_path in tqdm(
-            zip(new_img_mask, hashes, paths),
+
+        paths = self.filter_list(paths, new_img_mask)
+        hashes = self.filter_list(hashes, new_img_mask)
+        images = self.load_images(paths)
+
+        sorted_data = self.sort_data_for_processing(list(zip(paths, hashes, images)))
+
+        img_buffer = []
+        hash_buffer = []
+        path_buffer = []
+        for img_path, img_hash, img in tqdm(
+            sorted_data,
             desc='Extracting',
             total=new_img_count,
         ):
-            if not new:
-                continue
-            img = Image.open(img_path)
-            img = self._rotate_image(img)
-            faces, probs, boxes = self.detector.extract_faces(img)
-            embeddings = self.encoder.encode_faces(faces)
+            img = self._preprocess_image(img)
 
-            img_dict = dict(
-                path=str(img_path),
-                hash=img_hash,
-            )
-            faces_dicts = []
-            if faces is not None:
-                for embedding, prob, box in zip(embeddings, probs, boxes):
-                    face_dict = dict(
-                        probability=prob,
-                        bbox=self._encode_array(box),
-                        encoding=self._encode_array(embedding),
-                    )
-                    faces_dicts.append(face_dict)
+            if not img_buffer or (
+                img.size[0] == img_buffer[-1].size[0]
+                and img.size[1] == img_buffer[-1].size[1]
+                and len(img_buffer) < max_batch_size
+            ):
+                img_buffer.append(img)
+                hash_buffer.append(img_hash)
+                path_buffer.append(img_path)
+            else:
+                self.process_batch(img_buffer, path_buffer, hash_buffer, group)
+                img_buffer.clear()
+                hash_buffer.clear()
+                path_buffer.clear()
+                img_buffer.append(img)
+                hash_buffer.append(img_hash)
+                path_buffer.append(img_path)
 
-            self.storage.save_image(img_dict, faces_dicts, group)
+        self.process_batch(img_buffer, path_buffer, hash_buffer, group)
+
+    def process_batch(
+        self,
+        img_batch: list[Image.Image],
+        path_batch: list[str],
+        hash_batch: list[str],
+        group: str,
+    ) -> None:
+        if not img_batch:
+            return
+
+        faces, probs, boxes = self.detector.extract_faces(img_batch)
+
+        # Filter out instances without face
+        faces_idx = []
+        faces_clean = []
+        for f in faces:
+            if f is not None:
+                faces_clean.append(f)
+                if faces_idx:
+                    faces_idx.append(faces_idx[-1] + len(f))
+                else:
+                    faces_idx.append(len(f))
+            else:
+                if faces_idx:
+                    faces_idx.append(faces_idx[-1])
+                else:
+                    faces_idx.append(0)
+        faces_idx.pop()
+
+        if not faces_clean:
+            return  # Fix
+
+        stacked_faces = torch.cat(faces_clean)
+        stacked_embeddings = self.encoder.encode_faces(stacked_faces)
+        embeddings = np.split(stacked_embeddings, faces_idx)
+
+        group_id = self.storage.get_group_id(group)
+        for path, hash, emb, prob, bbox in zip(
+            path_batch, hash_batch, embeddings, probs, boxes
+        ):
+            img = Photo(path=str(path), hash=hash, group_id=group_id)
+            if bbox is not None:
+                faces_obj = [
+                    Face(probability=p, bbox=b, encoding=e)
+                    for p, b, e in zip(prob, bbox, emb)
+                ]
+            else:
+                faces_obj = []
+
+            self.save_img_data(img, faces_obj)
+
+    def save_img_data(self, img: Photo, faces: list[Face]) -> None:
+        session = self.storage.get_session()
+
+        session.add(img)
+        session.commit()
+        for face in faces:
+            face.photo_id = img.id
+
+        session.add_all(faces)
+        session.commit()
+        session.close()
 
     def cluster(self, group: str, prob_threshold: float = 0.99):
-        # TODO add probability threshold
         # TODO when more than one face from single photo is in the same cluster, leave most probable one ?
         session = self.storage.get_session()
         group_orm = session.query(Group).filter(Group.name == group).first()
@@ -221,7 +309,7 @@ class Manager:
         faces = []
         for face, photo in face_photo_join:
             img = Image.open(photo.path)
-            img = self._rotate_image(img)
+            img = self._preprocess_image(img)
             bbox = self._decode_array(face.bbox)
 
             face = img.crop(bbox)
@@ -243,7 +331,7 @@ class Manager:
             .first()
         )
         img = Image.open(photo.path)
-        img = self._rotate_image(img)
+        img = self._preprocess_image(img)
 
         bbox = self._decode_array(face.bbox)
         face_img = img.crop(bbox)
